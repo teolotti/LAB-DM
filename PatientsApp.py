@@ -121,6 +121,8 @@ with right:
 
         # Prepare data for plotting
         fig = px.line()
+        if split_age or split_gender:
+            fig2 = px.bar()
         for pat in selected_patterns:
             sub = timeseries_df[timeseries_df['pattern_label'] == pat].copy()
             if sub.empty:
@@ -133,20 +135,26 @@ with right:
             fig.add_scatter(x=sub['pub_date'], y=sub['count'], mode='lines+markers', name=f"{pat} ({freq_choice})")
 
             # Age split
-            if split_age:
+            if split_age and not split_gender:
                 sub_demog = demog_df[demog_df['pattern_label'] == pat]
                 for age_bin in sub_demog['age_bin'].unique():
-                    sub_age = sub_demog[sub_demog['age_bin'] == age_bin]
-                    sub_age = sub_age.groupby(pd.Grouper(key='pub_date', freq=freq)).sum().reset_index()
-                    fig.add_scatter(x=sub_age['pub_date'], y=sub_age['count'], mode='lines+markers', name=f"{pat} - Age: {age_bin} ({freq_choice})")
+                    val = sub_demog[sub_demog['age_bin'] == age_bin]['count'].sum()
+                    fig2.add_bar(x=[age_bin], y=[val], name=f"{pat} - Age: {age_bin} ({freq_choice})")
 
             # Gender split
-            if split_gender:
+            if split_gender and not split_age:
                 sub_demog = demog_df[demog_df['pattern_label'] == pat]
                 for gender in sub_demog['gender'].unique():
-                    sub_gender = sub_demog[sub_demog['gender'] == gender]
-                    sub_gender = sub_gender.groupby(pd.Grouper(key='pub_date', freq=freq)).sum().reset_index()
-                    fig.add_scatter(x=sub_gender['pub_date'], y=sub_gender['count'], mode='lines+markers', name=f"{pat} - Gender: {gender} ({freq_choice})")
+                    val = sub_demog[sub_demog['gender'] == gender]['count'].sum()
+                    fig2.add_bar(x=[gender], y=[val], name=f"{pat} - Gender: {gender} ({freq_choice})")
+            
+            # Both splits
+            if split_age and split_gender:
+                sub_demog = demog_df[demog_df['pattern_label'] == pat]
+                for age_bin in sub_demog['age_bin'].unique():
+                    for gender in sub_demog['gender'].unique():
+                        val = sub_demog[(sub_demog['age_bin'] == age_bin) & (sub_demog['gender'] == gender)]['count'].sum()
+                        fig2.add_bar(x=[f"{age_bin} - {gender}"], y=[val], name=f"{pat} - Age: {age_bin}, Gender: {gender} ({freq_choice})")    
                     
         fig.update_layout(
             title=f"Time Series of Selected Patterns ({freq_choice})",
@@ -156,6 +164,16 @@ with right:
             hovermode="x unified"
         )
         st.plotly_chart(fig, use_container_width=True)
+
+        if split_age or split_gender:
+            fig2.update_layout(
+                title="Demographic Distribution of Selected Patterns",
+                xaxis_title="Category",
+                yaxis_title="Number of Patients",
+                legend_title="Patterns",
+                barmode='group'
+            )
+            st.plotly_chart(fig2, use_container_width=True)
     
     st.markdown("---")
     st.subheader("🧾 Estratti testuali")
