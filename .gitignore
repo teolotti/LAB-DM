@@ -1,0 +1,12 @@
+data/PMC-Patients.csv
+.vscode/settings.json
+unique_pmids.txt
+__pycache__/custom_stopwords.cpython-310.pyc
+data/pubmed_data.csv
+outputs/freq_terms.csv
+outputs/demographics.parquet
+outputs/patterns.parquet
+outputs/PMC_clean.parquet
+outputs/snippets.parquet
+outputs/timeseries.parquet
+outputs/transactions.parquet

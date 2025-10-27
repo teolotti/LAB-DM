@@ -94,5 +94,10 @@ cust_sw = {
     'fig', 'figure', 'image', 'intravenous', 'laboratory', 'magnetic', 
     'magnetic resonance', 'mri', 'oral', 'physical', 'pressure', 'rate', 'resonance', 
     'scan', 'size', 'surgical', 'tomography', 'underwent', 'weight', 'treat',
-    'patient', 'low', 'use', 'chest', 'abdominal', 'female', 'admission', 'man'
+    'patient', 'low', 'use', 'chest', 'abdominal', 'female', 'admission', 'man',
+    'cell', 'pain', 'three', 'first', 'area', 'severe', 'note', 'make', 'large', 'range',
+    'second', 'loss', 'see', 'evaluation', 'identify', 'measure', 'condition', 'function',
+    'improvement', 'consistent', 'four', 'control', 'remove', 'age', 'last', 'min', 'culture',
+    'administer', 'several', 'addition', 'imaging', 'free', 'complaint', 'anti', 'room', 'response',
+    'end'
 }
