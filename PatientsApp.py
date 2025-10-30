@@ -63,6 +63,10 @@ with left:
 
     filt = filt.sort_values(by=order_by, ascending=ascending).reset_index(drop=True)
 
+
+    st.write(f"Total patients: {len(clean_df)}")
+
+
     # Display patterns
     options = [f"{r['pattern_label']} - {r['support_count']}" for _, r in filt.iterrows()]
     selected = st.multiselect("Select patterns to visualize", options, default=options[:1], max_selections=5)
@@ -223,7 +227,7 @@ with right:
             st.plotly_chart(fig_age_gender, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("🧾 Estratti testuali")
+    st.subheader("🧾 Text Snippets")
     for pat in selected_patterns:
         st.markdown(f"**Pattern:** {pat}")
         snippets_sub = snippets_df[snippets_df['pattern_label'] == pat]
