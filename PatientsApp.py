@@ -123,11 +123,28 @@ with right:
         split_age = st.checkbox("Split by Age Group", value=False)
         split_gender = st.checkbox("Split by Gender", value=False)
 
+        # Normalization controls
+        st.subheader("Normalization")
+        show_normalized = st.checkbox("Normalize counts by total articles per period", value=True)
+        normalization_unit = st.selectbox("Normalization unit", options=['Percentage', 'Raw count'], index=0)
+
         # Prepare data for plotting
-
         age_order = ["<1", "0-17", "18-39", "40-59", "60-79", "80+", "unknown"]
-        color_map = {"M": "#1f77b4", "F": "#e377c2"} 
+        color_map = {"M": "#1f77b4", "F": "#e377c2"}
 
+        # Precompute total articles per period (use the same freq and date window)
+        total_per_period = (
+            clean_df.loc[
+                (clean_df['pub_date'] >= pd.to_datetime(start_date)) &
+                (clean_df['pub_date'] <= pd.to_datetime(end_date)) &
+                (clean_df['pub_date'].notna()),
+                ['pub_date']
+            ]
+            .groupby(pd.Grouper(key='pub_date', freq=freq))
+            .size()
+            .reset_index(name='total_articles')
+        )
+        total_per_period['pub_date'] = pd.to_datetime(total_per_period['pub_date'])
 
         fig = px.line()
         for pat in selected_patterns:
@@ -137,9 +154,28 @@ with right:
             sub['pub_date'] = pd.to_datetime(sub['pub_date'])
             sub = sub[(sub['pub_date'] >= pd.to_datetime(start_date)) & (sub['pub_date'] <= pd.to_datetime(end_date))]
 
+            # Ensure sub is aggregated at the desired frequency (in case timeseries_df wasn't)
             sub = sub.groupby(pd.Grouper(key='pub_date', freq=freq)).sum().reset_index()
 
-            fig.add_scatter(x=sub['pub_date'], y=sub['count'], mode='lines+markers', name=f"{pat} ({freq_choice})")
+            # Merge with total articles per period to compute normalized rates
+            merged = pd.merge(total_per_period, sub[['pub_date', 'count']], on='pub_date', how='left')
+            merged['count'] = merged['count'].fillna(0).astype(int)
+            merged['total_articles'] = merged['total_articles'].fillna(0).astype(int)
+
+            if show_normalized:
+                if normalization_unit == 'Percentage':
+                    merged['rate'] = merged.apply(
+                        lambda r: (r['count'] / r['total_articles'] * 100) if r['total_articles'] > 0 else float('nan'),
+                        axis=1
+                    )
+                    y_col = 'rate'
+                    y_label = 'Rate of Patients (%)'
+                else:
+                    # show raw counts
+                    y_col = 'count'
+                    y_label = 'Number of Patients'
+
+            fig.add_scatter(x=merged['pub_date'], y=merged[y_col], mode='lines+markers', name=f"{pat} ({freq_choice})")
 
             # Age split
             if split_age and not split_gender:
@@ -213,7 +249,7 @@ with right:
         fig.update_layout(
             title=f"Time Series of Selected Patterns ({freq_choice})",
             xaxis_title="Publication Date",
-            yaxis_title="Number of Patients",
+            yaxis_title=y_label,
             legend_title="Patterns",
             hovermode="x unified"
         )
