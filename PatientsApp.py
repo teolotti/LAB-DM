@@ -35,7 +35,7 @@ st.title("🩺 PatientLens — Visual Text Mining of clinical cases")
 st.sidebar.header("⚙️ Controlli globali")
 if st.sidebar.button("Ricarica dati"):
     st.cache_data.clear()
-    st.experimental_rerun()
+    clean_df, pattern_df, timeseries_df, snippets_df, demog_df = load_data()
 
 st.sidebar.info("You can search and select patterns, view time series, and explore patient demographics.")
 
@@ -125,7 +125,7 @@ with right:
 
         # Normalization controls
         st.subheader("Normalization")
-        show_normalized = st.checkbox("Normalize counts by total articles per period", value=True)
+        
         normalization_unit = st.selectbox("Normalization unit", options=['Percentage', 'Raw count'], index=0)
 
         # Prepare data for plotting
@@ -162,18 +162,17 @@ with right:
             merged['count'] = merged['count'].fillna(0).astype(int)
             merged['total_articles'] = merged['total_articles'].fillna(0).astype(int)
 
-            if show_normalized:
-                if normalization_unit == 'Percentage':
-                    merged['rate'] = merged.apply(
-                        lambda r: (r['count'] / r['total_articles'] * 100) if r['total_articles'] > 0 else float('nan'),
-                        axis=1
-                    )
-                    y_col = 'rate'
-                    y_label = 'Rate of Patients (%)'
-                else:
-                    # show raw counts
-                    y_col = 'count'
-                    y_label = 'Number of Patients'
+            if normalization_unit == 'Percentage':
+                merged['rate'] = merged.apply(
+                    lambda r: (r['count'] / r['total_articles'] * 100) if r['total_articles'] > 0 else float('nan'),
+                    axis=1
+                )
+                y_col = 'rate'
+                y_label = 'Rate of Patients (%)'
+            else:
+                # show raw counts
+                y_col = 'count'
+                y_label = 'Number of Patients'
 
             fig.add_scatter(x=merged['pub_date'], y=merged[y_col], mode='lines+markers', name=f"{pat} ({freq_choice})")
 
