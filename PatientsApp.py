@@ -95,20 +95,33 @@ with right:
 
         freq_map = {
             'Month': 'M',
-            'Trimester': '3M',
-            'Semester': '6M',
+            'Trimester': 'Q',
+            'Semester': 'BQ',
             'Year': 'Y'
         }
 
+        freq_display_map = {
+            'Month': 'MS',  # Month Start
+            'Trimester': 'QS',  # Quarter Start
+            'Semester': 'BQS',  # 2 Quarter Start
+            'Year': 'YS'  # Year Start
+        }
+
         freq = freq_map[freq_choice]
+        display_freq = freq_display_map[freq_choice]
 
         # Select period
-        if 'pub_date' in clean_df.columns:
-            min_date = pd.to_datetime(clean_df['pub_date']).min()
-            max_date = pd.to_datetime(clean_df['pub_date']).max()
+        if not timeseries_df.empty:
+            timeseries_df['pub_date'] = pd.to_datetime(timeseries_df['pub_date'])
+            min_date = timeseries_df['pub_date'].min()
+            max_date = timeseries_df['pub_date'].max()
+        elif 'pub_date' in clean_df.columns:
+            clean_df['pub_date'] = pd.to_datetime(clean_df['pub_date'])
+            min_date = clean_df['pub_date'].min()
+            max_date = clean_df['pub_date'].max()
         else:
-            min_date = pd.to_datetime("2000-01-01")
-            max_date = pd.to_datetime("2025-12-31")
+            min_date = pd.to_datetime("2020-01-01")
+            max_date = pd.to_datetime("2021-12-31")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -132,21 +145,31 @@ with right:
         age_order = ["<1", "0-17", "18-39", "40-59", "60-79", "80+", "unknown"]
         color_map = {"M": "#1f77b4", "F": "#e377c2"}
 
-        # Precompute total articles per period (use the same freq and date window)
-        total_per_period = (
-            clean_df.loc[
-                (clean_df['pub_date'] >= pd.to_datetime(start_date)) &
-                (clean_df['pub_date'] <= pd.to_datetime(end_date)) &
-                (clean_df['pub_date'].notna()),
-                ['pub_date']
-            ]
-            .groupby(pd.Grouper(key='pub_date', freq=freq))
-            .size()
-            .reset_index(name='total_articles')
-        )
-        total_per_period['pub_date'] = pd.to_datetime(total_per_period['pub_date'])
+        # Precompute total articles per period from clean_df
+        date_filtered_clean = clean_df[
+            (clean_df['pub_date'] >= pd.to_datetime(start_date)) &
+            (clean_df['pub_date'] <= pd.to_datetime(end_date))
+        ].copy()
+        
+        if not date_filtered_clean.empty:
+            # Resample to get total articles per period
+            date_filtered_clean = date_filtered_clean.set_index('pub_date')
+            total_per_period = date_filtered_clean.resample(display_freq).size()
+            total_per_period = total_per_period.reset_index(name='total_articles')
+            total_per_period['period_label'] = total_per_period['pub_date'].dt.strftime('%Y-%m')
+            
+            # For quarters and half-years, create better labels
+            if freq_choice == 'Trimester':
+                total_per_period['period_label'] = total_per_period['pub_date'].dt.to_period('Q').astype(str)
+            elif freq_choice == 'Semester':
+                total_per_period['period_label'] = total_per_period['pub_date'].dt.to_period('2Q').astype(str)
+            elif freq_choice == 'Year':
+                total_per_period['period_label'] = total_per_period['pub_date'].dt.year.astype(str)
+        else:
+            total_per_period = pd.DataFrame(columns=['pub_date', 'total_articles', 'period_label'])
 
         fig = px.line()
+        all_merged_data = []
         for pat in selected_patterns:
             sub = timeseries_df[timeseries_df['pattern_label'] == pat].copy()
             if sub.empty:
@@ -155,16 +178,34 @@ with right:
             sub = sub[(sub['pub_date'] >= pd.to_datetime(start_date)) & (sub['pub_date'] <= pd.to_datetime(end_date))]
 
             # Ensure sub is aggregated at the desired frequency (in case timeseries_df wasn't)
-            sub = sub.groupby(pd.Grouper(key='pub_date', freq=freq)).sum().reset_index()
+            sub = sub.set_index('pub_date')
+            sub_resampled = sub['count'].resample(display_freq).sum().reset_index()
+            sub_resampled['period_label'] = sub_resampled['pub_date'].dt.strftime('%Y-%m')
 
+            if freq_choice == 'Trimester':
+                sub_resampled['period_label'] = sub_resampled['pub_date'].dt.to_period('Q').astype(str)
+            elif freq_choice == 'Semester':
+                sub_resampled['period_label'] = sub_resampled['pub_date'].dt.to_period('2Q').astype(str)
+            elif freq_choice == 'Year':
+                sub_resampled['period_label'] = sub_resampled['pub_date'].dt.year.astype(str)
+
+            sub_resampled['display_date'] = sub_resampled['pub_date']
             # Merge with total articles per period to compute normalized rates
-            merged = pd.merge(total_per_period, sub[['pub_date', 'count']], on='pub_date', how='left')
-            merged['count'] = merged['count'].fillna(0).astype(int)
-            merged['total_articles'] = merged['total_articles'].fillna(0).astype(int)
+            if not total_per_period.empty:
+                merged = pd.merge(total_per_period[['period_label', 'total_articles']], sub_resampled[['period_label', 'count', 'display_date']], on='period_label', how='outer')
+                merged['count'] = merged['count'].fillna(0).astype(int)
+                merged['total_articles'] = merged['total_articles'].fillna(0).astype(int)
+            else:
+                merged = sub_resampled.copy()
+                merged['total_articles'] = 0
+
+            # Debug info
+            st.caption(f"Pattern '{pat}': {len(merged)} periods, total count: {merged['count'].sum()}")
+            
 
             if normalization_unit == 'Percentage':
                 merged['rate'] = merged.apply(
-                    lambda r: (r['count'] / r['total_articles'] * 100) if r['total_articles'] > 0 else float('nan'),
+                    lambda r: (r['count'] / r['total_articles'] * 100) if r['total_articles'] > 0 else 0.0,
                     axis=1
                 )
                 y_col = 'rate'
@@ -174,7 +215,7 @@ with right:
                 y_col = 'count'
                 y_label = 'Number of Patients'
 
-            fig.add_scatter(x=merged['pub_date'], y=merged[y_col], mode='lines+markers', name=f"{pat} ({freq_choice})")
+            fig.add_scatter(x=merged['display_date'], y=merged[y_col], mode='lines+markers', name=f"{pat} ({freq_choice})")
 
             # Age split
             if split_age and not split_gender:
@@ -252,6 +293,7 @@ with right:
             legend_title="Patterns",
             hovermode="x unified"
         )
+        
         st.plotly_chart(fig, use_container_width=True)
 
         if split_age and not split_gender:
