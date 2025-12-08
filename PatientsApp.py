@@ -217,75 +217,6 @@ with right:
 
             fig.add_scatter(x=merged['display_date'], y=merged[y_col], mode='lines+markers', name=f"{pat} ({freq_choice})")
 
-            # Age split
-            if split_age and not split_gender:
-                sub_demog = demog_df[demog_df['pattern_label'] == pat]
-                fig_age = px.bar()
-                for age_bin in sub_demog['age_bin'].unique():
-                    val = sub_demog[sub_demog['age_bin'] == age_bin]['count'].sum()
-                    fig_age.add_bar(x=[age_bin], y=[val], name=age_bin)
-                fig_age.update_layout(title=f"Age Distribution for {pat} ({freq_choice})",
-                                          xaxis_title="Age Group",
-                                          yaxis_title="Number of Patients")
-                fig_age.update_xaxes(categoryorder='array', categoryarray=age_order)
-
-            # Gender split
-            if split_gender and not split_age:
-                sub_demog = demog_df[demog_df['pattern_label'] == pat]
-                # Use graph_objects to control bar width and gaps (narrower bins)
-                fig_gender = go.Figure()
-                for gender in sub_demog['gender'].unique():
-                    val = sub_demog[sub_demog['gender'] == gender]['count'].sum()
-                    fig_gender.add_trace(go.Bar(
-                        x=[gender],
-                        y=[val],
-                        name="Male" if gender == 'M' else "Female",
-                        marker=dict(color=color_map.get(gender, '#7f7f7f')),
-                        width=0.4  # shrink bin width (smaller -> narrower bars)
-                    ))
-                fig_gender.update_layout(
-                    title=f"Gender Distribution for {pat} ({freq_choice})",
-                    xaxis_title="Gender",
-                    yaxis_title="Number of Patients",
-                    bargap=0.25,       # gap between bars of adjacent location coordinates
-                    bargroupgap=0.1   # gap between bars of the same location coordinate
-                )
-
-            # Both splits
-            if split_age and split_gender:
-                sub_demog = demog_df[demog_df['pattern_label'] == pat]
-                male_data = sub_demog[sub_demog['gender'] == 'M'].groupby('age_bin')['count'].sum().reset_index()
-                female_data = sub_demog[sub_demog['gender'] == 'F'].groupby('age_bin')['count'].sum().reset_index()
-
-                # Creiamo il grafico verticale affiancato
-                fig_age_gender = go.Figure()
-                fig_age_gender.add_trace(go.Bar(
-                    x=male_data['age_bin'],
-                    y=male_data['count'],
-                    name='Male',
-                    marker_color=color_map['M']
-                ))
-                fig_age_gender.add_trace(go.Bar(
-                    x=female_data['age_bin'],
-                    y=female_data['count'],
-                    name='Female',
-                    marker_color=color_map['F']
-                ))
-
-                # Massimo valore per asse y
-                max_val = max(female_data['count'].max() if not female_data.empty else 0,
-                            male_data['count'].max() if not male_data.empty else 0)
-
-                fig_age_gender.update_layout(
-                    title=f"Age and Gender Distribution for {pat} ({freq_choice})",
-                    xaxis=dict(title="Age Group", categoryorder='array', categoryarray=age_order),
-                    yaxis=dict(title="Number of Patients", range=[0, max_val*1.1]),
-                    barmode='group',  # Affianca le barre per età
-                    bargap=0.2,
-                    showlegend=True,
-                    legend=dict(x=0.8, y=1.05, orientation='h')
-                )
-
         fig.update_layout(
             title=f"Time Series of Selected Patterns ({freq_choice})",
             xaxis_title="Publication Date",
@@ -296,12 +227,85 @@ with right:
         
         st.plotly_chart(fig, use_container_width=True)
 
-        if split_age and not split_gender:
-            st.plotly_chart(fig_age, use_container_width=True)
-        elif split_gender and not split_age:
-            st.plotly_chart(fig_gender, use_container_width=True)
-        elif split_age and split_gender:
-            st.plotly_chart(fig_age_gender, use_container_width=True)
+        # Demographic plots - one for each pattern
+        if split_age or split_gender:
+            st.subheader("📊 Demographic Distributions")
+            
+            for pat in selected_patterns:
+                sub_demog = demog_df[demog_df['pattern_label'] == pat]
+                
+                if sub_demog.empty:
+                    continue
+                                
+                # Age split only
+                if split_age and not split_gender:
+                    fig_age = px.bar()
+                    for age_bin in sub_demog['age_bin'].unique():
+                        val = sub_demog[sub_demog['age_bin'] == age_bin]['count'].sum()
+                        fig_age.add_bar(x=[age_bin], y=[val], name=age_bin)
+                    fig_age.update_layout(
+                        title=f"Age Distribution for {pat}",
+                        xaxis_title="Age Group",
+                        yaxis_title="Number of Patients"
+                    )
+                    fig_age.update_xaxes(categoryorder='array', categoryarray=age_order)
+                    st.plotly_chart(fig_age, use_container_width=True)
+
+                # Gender split only
+                elif split_gender and not split_age:
+                    fig_gender = go.Figure()
+                    for gender in sub_demog['gender'].unique():
+                        val = sub_demog[sub_demog['gender'] == gender]['count'].sum()
+                        fig_gender.add_trace(go.Bar(
+                            x=[gender],
+                            y=[val],
+                            name="Male" if gender == 'M' else "Female",
+                            marker=dict(color=color_map.get(gender, '#7f7f7f')),
+                            width=0.4
+                        ))
+                    fig_gender.update_layout(
+                        title=f"Gender Distribution for {pat}",
+                        xaxis_title="Gender",
+                        yaxis_title="Number of Patients",
+                        bargap=0.25,
+                        bargroupgap=0.1
+                    )
+                    st.plotly_chart(fig_gender, use_container_width=True)
+
+                # Both splits
+                elif split_age and split_gender:
+                    male_data = sub_demog[sub_demog['gender'] == 'M'].groupby('age_bin')['count'].sum().reset_index()
+                    female_data = sub_demog[sub_demog['gender'] == 'F'].groupby('age_bin')['count'].sum().reset_index()
+
+                    fig_age_gender = go.Figure()
+                    fig_age_gender.add_trace(go.Bar(
+                        x=male_data['age_bin'],
+                        y=male_data['count'],
+                        name='Male',
+                        marker_color=color_map['M']
+                    ))
+                    fig_age_gender.add_trace(go.Bar(
+                        x=female_data['age_bin'],
+                        y=female_data['count'],
+                        name='Female',
+                        marker_color=color_map['F']
+                    ))
+
+                    max_val = max(
+                        female_data['count'].max() if not female_data.empty else 0,
+                        male_data['count'].max() if not male_data.empty else 0
+                    )
+
+                    fig_age_gender.update_layout(
+                        title=f"Age and Gender Distribution for {pat}",
+                        xaxis=dict(title="Age Group", categoryorder='array', categoryarray=age_order),
+                        yaxis=dict(title="Number of Patients", range=[0, max_val*1.1]),
+                        barmode='group',
+                        bargap=0.2,
+                        showlegend=True,
+                        legend=dict(x=0.8, y=1.05, orientation='h')
+                    )
+                    st.plotly_chart(fig_age_gender, use_container_width=True)
 
     st.markdown("---")
     st.subheader("🧾 Text Snippets")
