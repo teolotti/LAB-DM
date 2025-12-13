@@ -7,7 +7,6 @@ import os
 
 st.set_page_config(page_title="PatientLens", layout="wide")
 
-# File path to the cleaned data
 INPUT_CSV = 'data/PMC-Patients.csv'
 PUBMED_CSV = 'data/pubmed_data.csv'
 CLEAN_OUT = 'outputs/PMC_clean.parquet'
@@ -17,7 +16,6 @@ TS_OUT = 'outputs/timeseries.parquet'
 SNIPPET_OUT = 'outputs/snippets.parquet'
 DEMOG_OUT = 'outputs/demographics.parquet'
 
-# Data caching
 @st.cache_data
 def load_data():
     clean_df = pd.read_parquet(CLEAN_OUT)
@@ -29,33 +27,28 @@ def load_data():
 
 clean_df, pattern_df, timeseries_df, snippets_df, demog_df = load_data()
 
-st.title("🩺 PatientLens — Visual Text Mining of clinical cases")
+st.title("PatientLens — Visual Text Mining of clinical cases")
 
-# Sidebar
-st.sidebar.header("⚙️ Controlli globali")
-if st.sidebar.button("Ricarica dati"):
+st.sidebar.header("Global Controls")
+if st.sidebar.button("Reload Data"):
     st.cache_data.clear()
     clean_df, pattern_df, timeseries_df, snippets_df, demog_df = load_data()
 
 st.sidebar.info("You can search and select patterns, view time series, and explore patient demographics.")
 
-# Layout
 left, right = st.columns([3, 7])
 
-# Left column
 with left:
-    st.header("📋 Patterns List")
+    st.header("Patterns List")
 
     if 'support_count' not in pattern_df.columns:
         pattern_df['support_count'] = (pattern_df['support'] * len(clean_df)).astype(int)
     
-    # Filter and search
     min_len = st.slider("Minimum itemset length", 1, 5, 1)
     min_freq = st.number_input("Minimum support count", min_value=1, value=10, step=1)
     order_by = st.selectbox("Order by", options=['support_count', 'len'], index=0)
     ascending = st.checkbox("Ascending order", value=False)
 
-    # Dynamic filtering
     filt = pattern_df[
         (pattern_df['len'] >= min_len) &
         (pattern_df['support_count'] >= min_freq)
@@ -67,7 +60,6 @@ with left:
     st.write(f"Total patients: {len(clean_df)}")
 
 
-    # Display patterns
     options = [f"{r['pattern_label']} - {r['support_count']}" for _, r in filt.iterrows()]
     selected = st.multiselect("Select patterns to visualize", options, default=options[:1], max_selections=5)
     selected_patterns = [s.split(" - ")[0] for s in selected]
@@ -78,14 +70,12 @@ with left:
         use_container_width=True,
         height=300
     )
-# Right column
 with right:
-    st.header("📈 Time Series Visualization")
+    st.header("Time Series Visualization")
 
     if not selected_patterns:
         st.info("Select patterns from the left panel to visualize their time series.")
     else:
-        # Time aggregation
         st.subheader("Time Aggregation Options")
         freq_choice = st.radio(
             "Time Frequency:",
@@ -110,7 +100,6 @@ with right:
         freq = freq_map[freq_choice]
         display_freq = freq_display_map[freq_choice]
 
-        # Select period
         if not timeseries_df.empty:
             timeseries_df['pub_date'] = pd.to_datetime(timeseries_df['pub_date'])
             min_date = timeseries_df['pub_date'].min()
@@ -129,36 +118,30 @@ with right:
         with col2:
             end_date = st.date_input("To", max_date.date())
 
-        # More filtering
 
         st.subheader("Demographic Splits")
 
         split_age = st.checkbox("Split by Age Group", value=False)
         split_gender = st.checkbox("Split by Gender", value=False)
 
-        # Normalization controls
         st.subheader("Normalization")
         
         normalization_unit = st.selectbox("Normalization unit", options=['Percentage', 'Raw count'], index=0)
 
-        # Prepare data for plotting
         age_order = ["<1", "0-17", "18-39", "40-59", "60-79", "80+", "unknown"]
         color_map = {"M": "#1f77b4", "F": "#e377c2"}
 
-        # Precompute total articles per period from clean_df
         date_filtered_clean = clean_df[
             (clean_df['pub_date'] >= pd.to_datetime(start_date)) &
             (clean_df['pub_date'] <= pd.to_datetime(end_date))
         ].copy()
         
         if not date_filtered_clean.empty:
-            # Resample to get total articles per period
             date_filtered_clean = date_filtered_clean.set_index('pub_date')
             total_per_period = date_filtered_clean.resample(display_freq).size()
             total_per_period = total_per_period.reset_index(name='total_articles')
             total_per_period['period_label'] = total_per_period['pub_date'].dt.strftime('%Y-%m')
             
-            # For quarters and half-years, create better labels
             if freq_choice == 'Trimester':
                 total_per_period['period_label'] = total_per_period['pub_date'].dt.to_period('Q').astype(str)
             elif freq_choice == 'Semester':
@@ -177,7 +160,6 @@ with right:
             sub['pub_date'] = pd.to_datetime(sub['pub_date'])
             sub = sub[(sub['pub_date'] >= pd.to_datetime(start_date)) & (sub['pub_date'] <= pd.to_datetime(end_date))]
 
-            # Ensure sub is aggregated at the desired frequency (in case timeseries_df wasn't)
             sub = sub.set_index('pub_date')
             sub_resampled = sub['count'].resample(display_freq).sum().reset_index()
             sub_resampled['period_label'] = sub_resampled['pub_date'].dt.strftime('%Y-%m')
@@ -190,7 +172,6 @@ with right:
                 sub_resampled['period_label'] = sub_resampled['pub_date'].dt.year.astype(str)
 
             sub_resampled['display_date'] = sub_resampled['pub_date']
-            # Merge with total articles per period to compute normalized rates
             if not total_per_period.empty:
                 merged = pd.merge(total_per_period[['period_label', 'total_articles']], sub_resampled[['period_label', 'count', 'display_date']], on='period_label', how='outer')
                 merged['count'] = merged['count'].fillna(0).astype(int)
@@ -199,7 +180,6 @@ with right:
                 merged = sub_resampled.copy()
                 merged['total_articles'] = 0
 
-            # Debug info
             st.caption(f"Pattern '{pat}': {len(merged)} periods, total count: {merged['count'].sum()}")
             
 
@@ -211,7 +191,6 @@ with right:
                 y_col = 'rate'
                 y_label = 'Rate of Patients (%)'
             else:
-                # show raw counts
                 y_col = 'count'
                 y_label = 'Number of Patients'
 
@@ -227,9 +206,8 @@ with right:
         
         st.plotly_chart(fig, use_container_width=True)
 
-        # Demographic plots - one for each pattern
         if split_age or split_gender:
-            st.subheader("📊 Demographic Distributions")
+            st.subheader("Demographic Distributions")
             
             for pat in selected_patterns:
                 sub_demog = demog_df[demog_df['pattern_label'] == pat]
@@ -237,7 +215,6 @@ with right:
                 if sub_demog.empty:
                     continue
                                 
-                # Age split only
                 if split_age and not split_gender:
                     fig_age = px.bar()
                     for age_bin in sub_demog['age_bin'].unique():
@@ -251,7 +228,6 @@ with right:
                     fig_age.update_xaxes(categoryorder='array', categoryarray=age_order)
                     st.plotly_chart(fig_age, use_container_width=True)
 
-                # Gender split only
                 elif split_gender and not split_age:
                     fig_gender = go.Figure()
                     for gender in sub_demog['gender'].unique():
@@ -272,7 +248,6 @@ with right:
                     )
                     st.plotly_chart(fig_gender, use_container_width=True)
 
-                # Both splits
                 elif split_age and split_gender:
                     male_data = sub_demog[sub_demog['gender'] == 'M'].groupby('age_bin')['count'].sum().reset_index()
                     female_data = sub_demog[sub_demog['gender'] == 'F'].groupby('age_bin')['count'].sum().reset_index()
@@ -308,7 +283,7 @@ with right:
                     st.plotly_chart(fig_age_gender, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("🧾 Text Snippets")
+    st.subheader("Text Snippets")
     for pat in selected_patterns:
         st.markdown(f"**Pattern:** {pat}")
         snippets_sub = snippets_df[snippets_df['pattern_label'] == pat]
