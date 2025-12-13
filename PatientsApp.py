@@ -289,9 +289,11 @@ with right:
         snippets_sub = snippets_df[snippets_df['pattern_label'] == pat]
         if not snippets_sub.empty:
             snippets = snippets_sub.iloc[0]['snippets']
-            for snip in snippets:
+            titles = snippets_sub.iloc[0]['titles']
+            for snip, tit  in zip(snippets, titles):
                 highlighted = re.sub(r'(' + '|'.join(re.escape(tok) for tok in pat.split(' || ')) + r')', r"**\1**", snip, flags=re.IGNORECASE)
-                st.markdown(f"- {highlighted}")
+                st.markdown(f"- ### {tit}")
+                st.markdown(f"{highlighted}")
         else:
             st.write("No snippets available.")
 
